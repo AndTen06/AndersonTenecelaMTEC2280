@@ -1,0 +1,68 @@
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+using System.IO.Ports;
+
+public class ArdiunoReader : MonoBehaviour
+{
+    SerialPort SerialStream = new SerialPort("COM10", 115200);
+
+    public float sensorOnef = 0;
+    public float sensorTwof = 0;
+    public Animator thermin;
+    public Animator RH;
+    private double increment;
+    private double phase;
+    private double sampleRate = 48000;
+    public float gain = .1f;
+    public AnimationCurve vibratoCurve;
+    public float vibratoRange = 2000;
+    public float vibratoSpeed = 1;
+    public AudioSource SRC;
+    private float smoothSensor = 0;
+    public float smoothingAmount = 0.01f;
+
+    private void OnAudioFilterRead(float[] data, int channels)
+    {
+        smoothSensor = Mathf.Lerp(smoothSensor, sensorOnef, smoothingAmount);
+        increment = smoothSensor * 2 * Mathf.PI / sampleRate;
+        for(int i = 0; i < data.Length; i += channels)
+        {
+            phase += increment;
+            data[i] = (gain * Mathf.Sin((float)phase));
+
+            if (channels == 2)
+            {
+                data[i + 1] = data[i];
+            }
+            if (phase > Mathf.PI * 2)
+            {
+                phase = 0;
+            }
+        }
+    }
+
+    // Start is called before the first frame update
+    void Start()
+    {
+        SerialStream.Open();
+    }
+
+    // Update is called once per frame
+    void Update()
+    {
+        string arduinoData = SerialStream.ReadLine();
+        string[] frequencies = arduinoData.Split('/');
+        if (frequencies.Length <= 0)
+        {
+            return;
+        }
+        sensorOnef = float.Parse(frequencies[0]);
+        sensorTwof = float.Parse(frequencies[1]);
+        thermin.SetFloat("s1", sensorOnef);
+        RH.SetFloat("s2", sensorTwof);
+        //Debug.Log("sensor1 " + frequencies[0]);
+        Debug.Log("sensor2 " + frequencies[1]);
+        SRC.pitch = 1f + (vibratoCurve.Evaluate(Mathf.Clamp01(sensorTwof / vibratoRange)) * Mathf.Sin(Time.time * vibratoSpeed));
+    }
+}
